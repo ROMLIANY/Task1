@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = "romliani/ynet-app"
+        CONTAINER_NAME = "ynet-app-prod"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                echo "משוך קוד מה-GitHub"
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo "בניית Docker Image"
+                sh "docker build -t ${IMAGE_NAME}:latest ."
+            }
+        }
+
+        stage('Run Container') {
+            steps {
+                echo "הרצת הקונטיינר"
+                // מחיקה של קונטיינר קיים אם יש
+                sh "docker rm -f ${CONTAINER_NAME} || true"
+                // הרצת קונטיינר
+                sh "docker run -d --name ${CONTAINER_NAME} -p 5000:5000 ${IMAGE_NAME}:latest"
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                echo "בדיקת בריאות של האפליקציה"
+                script {
+                    def response = sh(script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:5000", returnStdout: true).trim()
+                    if (response != "200") {
+                        error "Health check failed! Response code: ${response}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo "הפריסה הצליחה! האפליקציה רצה."
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo "ביצוע Rollback - עצירת הקונטיינר"
+            sh "docker rm -f ${CONTAINER_NAME} || true"
+        }
+    }
+}
